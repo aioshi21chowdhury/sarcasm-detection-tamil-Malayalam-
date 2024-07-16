@@ -1,0 +1,99 @@
+import re
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report
+from sentence_transformers import SentenceTransformer
+from imblearn.over_sampling import SMOTE
+import joblib
+from sklearn.model_selection import GridSearchCV
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.svm import SVC
+
+filename = 'C:/Users/Souvik/Downloads/cleaned_dataset_mal (1).csv'
+
+
+# Preprocessing function
+def preprocess_text(text):
+    text = text.lower()  # Convert to lowercase
+    text = re.sub(r'http\S+', '', text)  # Remove URLs
+    text = re.sub(r'@\w+|#', '', text)  # Remove mentions and hashtags
+    text = re.sub(r'[^a-z0-9\s]', '', text)  # Remove special characters
+    text = re.sub(r'\s+', ' ', text).strip()  # Remove extra spaces
+    return text
+
+# Load your dataset (replace 'your_dataset.csv' with your actual dataset path)
+df = pd.read_csv(filename)
+
+# Apply preprocessing to the text column
+df['Text'] = df['Text'].apply(preprocess_text)
+
+# Split the dataset into train and test sets
+train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
+
+# Define the model name (for all-MiniLM-L6-v2)
+model_name = "sentence-transformers/all-MiniLM-L6-v2"
+
+# Load the model
+model = SentenceTransformer(model_name)
+
+# Encode the text into embeddings
+train_embeddings = model.encode(train_df['Text'].tolist(), convert_to_numpy=True)
+test_embeddings = model.encode(test_df['Text'].tolist(), convert_to_numpy=True)
+
+# Apply SMOTE to handle class imbalance
+smote = SMOTE(random_state=42)
+train_embeddings_smote, train_labels_smote = smote.fit_resample(train_embeddings, train_df['labels'])
+
+# Normalize the embeddings
+scaler = MinMaxScaler()
+train_embeddings_smote = scaler.fit_transform(train_embeddings_smote)
+test_embeddings = scaler.transform(test_embeddings)
+
+# Hyperparameter tuning for Logistic Regression
+# param_grid = {
+#     'C': [0.01, 0.1, 1, 10, 100],
+#     'kernel': ['linear', 'poly', 'rbf', 'sigmoid'],
+#     'max_iter': [500, 1000, 2000, 3000, 5000, 7000]  # Further increased iteration limit
+# }
+
+#####
+
+# grid_search = GridSearchCV(SVC(), param_grid, cv=5, scoring='accuracy')
+# grid_search.fit(train_embeddings_smote, train_labels_smote)
+
+# Best parameters
+# print("Best parameters found: ", grid_search.best_params_)
+
+# Train the classifier with the best parameters
+
+classifier = RandomForestClassifier(n_estimators=100, random_state=42)
+classifier.fit(train_embeddings_smote, train_labels_smote)
+
+#####
+# Predict on the test set
+test_predictions = classifier.predict(test_embeddings)
+
+# Evaluate the model
+report = classification_report(test_df['labels'], test_predictions)
+print(report)
+
+# Save the models
+# Save the SentenceTransformer model as a .pkl file
+model_save_path = 'tuned_1sentence_transformer_model.pkl'
+joblib.dump(model, model_save_path)
+
+# Save the LogisticRegression classifier as a .pkl file
+classifier_save_path = 'tuned1_RandomForest_classifier.pkl'
+joblib.dump(classifier, classifier_save_path)
+
+print("Models saved successfully!")
+
+# # Load the models (when needed)
+# # Load the SentenceTransformer model
+# model = joblib.load(model_save_path)
+
+# # Load the LogisticRegression classifier
+# classifier = joblib.load(classifier_save_path)
+
+# print("Models loaded successfully!")
